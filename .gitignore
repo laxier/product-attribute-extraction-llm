@@ -47,3 +47,5 @@ outputs/
 data/
 datasets/
 
+results/gold_pairs.csv
+*_gold.json
