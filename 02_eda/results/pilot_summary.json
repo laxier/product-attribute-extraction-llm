@@ -1,0 +1,58 @@
+{
+  "input_sha256": "4e544435b060ce193d75f04ee9f6bd2fb72d12d2c506a92ad8b68e57576e00bb",
+  "input_records": 50,
+  "monitor_records": 50,
+  "pilot_records": 50,
+  "clean_records": 50,
+  "missing_before_cleaning": {
+    "url": 0,
+    "code": 0,
+    "title": 0,
+    "category": 0,
+    "description": 0,
+    "specs": 0
+  },
+  "duplicate_excess_before_cleaning": {
+    "url": 0,
+    "code": 0,
+    "title": 0,
+    "description": 0
+  },
+  "removed_empty": 0,
+  "removed_duplicates": 0,
+  "normalized_descriptions": 40,
+  "description_length_characters_after_normalization": {
+    "min": 313,
+    "max": 1257,
+    "mean": 848.94,
+    "median": 872.0
+  },
+  "brands": {
+    "AOC": 4,
+    "ARDOR GAMING": 6,
+    "ASUS": 2,
+    "Aceline": 1,
+    "Acer": 4,
+    "DEXP": 6,
+    "Hisense": 4,
+    "LG": 3,
+    "MSI": 6,
+    "Philips": 1,
+    "Samsung": 7,
+    "Xiaomi": 6
+  },
+  "missing_reference_specs": {
+    "диагональ": 0,
+    "разрешение": 0,
+    "частота": 2,
+    "тип матрицы": 0,
+    "яркость": 0,
+    "контрастность": 0,
+    "изогнутость": 0
+  },
+  "note": "Specs are reference characteristics, not text-extraction gold labels. Missing mentions require manual annotation.",
+  "split_counts": {
+    "development": 30,
+    "test": 20
+  }
+}

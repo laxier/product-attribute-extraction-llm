@@ -37,3 +37,15 @@ outputs/
 # Literature search results
 !01_literature/outputs/
 !01_literature/outputs/**
+
+# Local EDA scripts
+# Игнорируем файлы данных
+*.csv
+*.xlsx
+*.json
+*.parquet
+data/
+datasets/
+
+results/gold_pairs.csv
+*_gold.json
