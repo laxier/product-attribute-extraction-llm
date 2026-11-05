@@ -34,4 +34,6 @@ outputs/
 .idea/
 .vscode/
 
-
+# Literature search results
+!01_literature/outputs/
+!01_literature/outputs/**

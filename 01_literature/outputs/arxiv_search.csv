@@ -1,0 +1,18 @@
+title,date,url
+LLM-Ensemble: Optimal Large Language Model Ensemble Method for E-commerce Product Attribute Value Extraction,2024-02-29,http://arxiv.org/abs/2403.00863v2
+EIVEN: Efficient Implicit Attribute Value Extraction using Multimodal LLM,2024-04-13,http://arxiv.org/abs/2404.08886v1
+Self-Refinement Strategies for LLM-based Product Attribute Value Extraction,2025-01-02,http://arxiv.org/abs/2501.01237v2
+AI-PAVE-Br: Leveraging Large Language Models for Enhanced Product Attribute Value Extraction through a Golden Set Approach,2026-06-23,http://arxiv.org/abs/2606.24655v1
+ImplicitAVE: An Open-Source Dataset and Multimodal LLMs Benchmark for Implicit Attribute Value Extraction,2024-04-24,http://arxiv.org/abs/2404.15592v2
+Multi-Label Zero-Shot Product Attribute-Value Extraction,2024-02-13,http://arxiv.org/abs/2402.08802v1
+MADIAVE: Multi-Agent Debate for Implicit Attribute Value Extraction,2025-10-07,http://arxiv.org/abs/2510.05611v2
+Breaking the Autoregressive Chain: Hyper-Parallel Decoding for Efficient LLM-Based Attribute Value Extraction,2026-04-29,http://arxiv.org/abs/2604.26209v1
+Visual Zero-Shot E-Commerce Product Attribute Value Extraction,2025-02-21,http://arxiv.org/abs/2502.15979v1
+Correcting to Predict: Pseudo-Value Correction for Multimodal Attribute Value Extraction,2026-09-28,http://arxiv.org/abs/2609.34383v1
+ExtractGPT: Exploring the Potential of Large Language Models for Product Attribute Value Extraction,2023-10-19,http://arxiv.org/abs/2310.12537v5
+PAE: LLM-based Product Attribute Extraction for E-Commerce Fashion Trends,2024-05-27,http://arxiv.org/abs/2405.17533v1
+Using LLMs for the Extraction and Normalization of Product Attribute Values,2024-03-04,http://arxiv.org/abs/2403.02130v4
+IndustryBench-MIPU: Benchmarking Multi-Image Attribute Value Extraction for Industrial Products,2026-06-12,http://arxiv.org/abs/2606.14383v2
+Scaling E-Commerce Attribute Extraction with Parallel Decoding,2026-09-09,http://arxiv.org/abs/2609.09716v2
+Enhanced E-Commerce Attribute Extraction: Innovating with Decorative Relation Correction and LLAMA 2.0-Based Annotation,2023-12-09,http://arxiv.org/abs/2312.06684v1
+AnnoRetrieve: Efficient Structured Retrieval for Unstructured Document Analysis,2026-04-03,http://arxiv.org/abs/2604.02690v2
