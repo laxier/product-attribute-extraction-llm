@@ -6,10 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from statistics import mean, median
 
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -56,39 +54,54 @@ def values_in_text(attr, text):
         if v: found.add(v)
     return found
 
-def analyze(path, n_pilot=100, val_share=0.4, seed=42):
+def wilson(k, n, z=1.96):
+    if not n:
+        return 0.0, 0.0
+    p = k / n
+    d = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / d
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return centre - half, centre + half
+
+
+def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
     raw = Path(path).read_bytes()
     cards = json.loads(raw)
     if not isinstance(cards, list) or any(not isinstance(c, dict) for c in cards):
         raise ValueError('Expected a JSON array of card objects')
         
     monitors = [c for c in cards if isinstance(c.get('specs'), dict) and c['specs'].get('Тип') == 'монитор']
-    
     df = pd.DataFrame(monitors)
-    df['norm_desc'] = df['description'].apply(normalize)
-    
-    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(df['norm_desc'])
-    sim = cosine_similarity(tfidf)
-    dups = [(i, j) for i in range(len(df)) for j in range(i + 1, len(df)) if sim[i, j] >= 0.97]
-    drop_indices = list({j for i, j in dups})
-    df_clean = df.drop(index=drop_indices).reset_index(drop=True)
-    
+    if head:
+        df = df.head(head).copy()
+    df['brand'] = df['category'].astype(str).str.split(' / ').str[-1]
+    df['description_length'] = df['description'].fillna('').str.len()
+    df['spec_count'] = df['specs'].apply(len)
+
     rows = []
-    for _, c in df_clean.iterrows():
-        text = c['norm_desc'].lower().replace("ё", "е")
+    for _, c in df.iterrows():
+        text = normalize(c['description']).lower().replace("ё", "е")
         for attr, (key, norm, _) in ATTRS.items():
             if key not in c["specs"]:
                 continue
             spec = norm(c["specs"][key])
-            if not spec: continue
+            if not spec:
+                continue
             found = values_in_text(attr, text)
             status = "в тексте" if spec in found else "другое значение" if found else "не упомянут"
             rows.append({
-                "url": c["url"], "title": c["title"], "атрибут": attr, 
-                "в таблице": spec, "в тексте": ", ".join(sorted(found)), 
+                "url": c["url"], "title": c["title"], "атрибут": attr,
+                "в таблице": spec, "в тексте": ", ".join(sorted(found)),
                 "статус": status, "эталон": spec if status == "в тексте" else None
             })
     pairs = pd.DataFrame(rows)
+
+    descriptions = df['description'].fillna('').map(normalize)
+    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(descriptions)
+    sim = cosine_similarity(tfidf)
+    dups = [(i, j) for i in range(len(df)) for j in range(i + 1, len(df)) if sim[i, j] >= 0.97]
+    drop_indices = list({j for i, j in dups})
+    df_clean = df.drop(index=drop_indices).reset_index(drop=True)
     
     pilot = df_clean.iloc[:n_pilot]
     rest = df_clean.iloc[n_pilot:].sample(frac=1, random_state=seed)
@@ -102,13 +115,22 @@ def analyze(path, n_pilot=100, val_share=0.4, seed=42):
         'real_test': rest["url"].iloc[n_val:].tolist()
     }
     
-    lengths = df_clean['norm_desc'].str.len()
-    brands = Counter(df_clean['category'].apply(lambda x: str(x).split(' / ')[-1]))
+    lengths = df['description_length']
+    brands = Counter(df['brand'])
+    cov = pairs.pivot_table(index="атрибут", columns="статус", values="url", aggfunc="count", fill_value=0)
+    for status in ["в тексте", "другое значение", "не упомянут"]:
+        if status not in cov:
+            cov[status] = 0
+    cov = cov[["в тексте", "другое значение", "не упомянут"]]
+    cov["всего"] = cov.sum(axis=1)
+    cov["доля в тексте"] = (cov["в тексте"] / cov["всего"]).round(2)
+    cov["±"] = [round((wilson(row["в тексте"], row["всего"])[1] - wilson(row["в тексте"], row["всего"])[0]) / 2, 2) for _, row in cov.iterrows()]
     
     summary = {
         'input_sha256': manifest['source_sha256'],
         'input_records': len(cards),
         'monitor_records': len(monitors),
+        'analyzed_records': len(df),
         'removed_duplicates_tfidf': len(drop_indices),
         'clean_records': len(df_clean),
         'description_length_characters': {
@@ -118,10 +140,12 @@ def analyze(path, n_pilot=100, val_share=0.4, seed=42):
             'median': float(lengths.median()) if not lengths.empty else 0
         },
         'brands': dict(sorted(brands.items())),
-        'split_counts': {k: len(v) for k, v in manifest.items() if isinstance(v, list)}
+        'split_counts': {k: len(v) for k, v in manifest.items() if isinstance(v, list)},
+        'coverage': cov.reset_index().to_dict(orient='records'),
+        'conflict_card_count': int(pairs.loc[pairs['статус'] == 'другое значение', 'url'].nunique()),
     }
     
-    return summary, manifest, pairs, df_clean
+    return summary, manifest, pairs, df, df_clean
 
 def plot_coverage(pairs, out_path):
     cov = pairs.pivot_table(index="атрибут", columns="статус", values="url", aggfunc="count", fill_value=0)
@@ -129,12 +153,12 @@ def plot_coverage(pairs, out_path):
         if s not in cov: cov[s] = 0
     cov = cov[["в тексте", "другое значение", "не упомянут"]]
     
-    ax = cov.sort_values("в тексте").plot.barh(stacked=True, figsize=(10, 4.5), color=["#4B9462", "#D6A445", "#BCC0C8"])
-    ax.set_xlabel("число карточек", fontsize=11)
+    ax = cov.sort_values("в тексте").plot.barh(stacked=True, figsize=(8, 3.5), color=["#4c9a6a", "#d9a441", "#b8bec7"])
+    ax.set_xlabel("число карточек")
     ax.set_ylabel("")
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    plt.legend(loc="lower center", bbox_to_anchor=(0.5, -0.3), ncol=3, frameon=False, fontsize=11)
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=3, frameon=False)
     plt.tight_layout()
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
@@ -144,22 +168,23 @@ def main():
     p.add_argument('--input', required=True, type=Path)
     p.add_argument('--out-dir', required=True, type=Path)
     p.add_argument('--n-pilot', type=int, default=100)
+    p.add_argument('--head', type=int, help='Analyze only the first N monitor cards')
     a = p.parse_args()
     
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    summary, manifest, pairs, df_clean = analyze(a.input, n_pilot=a.n_pilot)
+    summary, manifest, pairs, df, df_clean = analyze(a.input, n_pilot=a.n_pilot, head=a.head)
     
-    for name, obj in [('eda_summary.json', summary), ('split_manifest.json', manifest)]:
+    for name, obj in [('eda_summary.json', summary), ('split_manifest.json', manifest), ('split_ids.json', manifest)]:
         (a.out_dir / name).write_text(json.dumps(obj, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         
     pairs.drop(columns=["title"]).to_csv(a.out_dir / 'gold_pairs.csv', index=False, encoding="utf-8")
     gold_dict = {u: {r["атрибут"]: (r["эталон"] if pd.notna(r["эталон"]) else None) for _, r in g.iterrows()} for u, g in pairs.groupby("url")}
-    cards_gold = [{"url": r["url"], "title": r["title"], "description": r["norm_desc"], "gold": gold_dict.get(r["url"], {})} for _, r in df_clean.iterrows()]
+    cards_gold = [{"url": r["url"], "title": r["title"], "description": normalize(r["description"]), "gold": gold_dict.get(r["url"], {})} for _, r in df.iterrows()]
     
     gold_path = a.input.parent / f"{a.input.stem}_gold.json"
     gold_path.write_text(json.dumps(cards_gold, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
     
-    plot_coverage(pairs, a.out_dir / 'coverage_stacked.png')
+    plot_coverage(pairs, a.out_dir / 'coverage.png')
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
