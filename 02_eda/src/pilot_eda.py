@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Advanced EDA, gold label extraction, and split generation for DNS monitor cards."""
+"""Analyze DNS monitor cards, prepare candidate labels and split identifiers."""
 import argparse
 from collections import Counter
 import hashlib
 import json
 from pathlib import Path
 import re
+import platform
+import importlib.metadata
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -69,8 +71,20 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
     cards = json.loads(raw)
     if not isinstance(cards, list) or any(not isinstance(c, dict) for c in cards):
         raise ValueError('Expected a JSON array of card objects')
-        
+
     monitors = [c for c in cards if isinstance(c.get('specs'), dict) and c['specs'].get('Тип') == 'монитор']
+    if not monitors:
+        raise ValueError('No monitor records found')
+    for index, card in enumerate(monitors):
+        for field in FIELDS:
+            value = card.get(field)
+            if not value or (field != 'specs' and not isinstance(value, str)):
+                raise ValueError(f'Monitor record {index}: missing or invalid {field}')
+    urls = [c['url'] for c in monitors]
+    if len(urls) != len(set(urls)):
+        raise ValueError('Duplicate monitor URLs; resolve source records before analysis')
+    if n_pilot < 1 or not 0 < val_share < 1:
+        raise ValueError('Expected n_pilot >= 1 and 0 < val_share < 1')
     df = pd.DataFrame(monitors)
     if head:
         df = df.head(head).copy()
@@ -78,9 +92,19 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
     df['description_length'] = df['description'].fillna('').str.len()
     df['spec_count'] = df['specs'].apply(len)
 
+    descriptions = df['description']
+    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(descriptions)
+    sim = cosine_similarity(tfidf)
+    dups = [(i, j) for i in range(len(df)) for j in range(i + 1, len(df)) if sim[i, j] >= 0.97]
+    drop_indices = list({j for i, j in dups})
+    df_clean = df.drop(index=drop_indices).reset_index(drop=True)
+
+    if len(df_clean) <= n_pilot + 1:
+        raise ValueError('Not enough cards for pilot, real_val and real_test')
+
     rows = []
-    for _, c in df.iterrows():
-        text = normalize(c['description']).lower().replace("ё", "е")
+    for _, c in df_clean.iterrows():
+        text = c['description'].lower().replace("ё", "е")
         for attr, (key, norm, _) in ATTRS.items():
             if key not in c["specs"]:
                 continue
@@ -96,17 +120,10 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
             })
     pairs = pd.DataFrame(rows)
 
-    descriptions = df['description'].fillna('').map(normalize)
-    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(descriptions)
-    sim = cosine_similarity(tfidf)
-    dups = [(i, j) for i in range(len(df)) for j in range(i + 1, len(df)) if sim[i, j] >= 0.97]
-    drop_indices = list({j for i, j in dups})
-    df_clean = df.drop(index=drop_indices).reset_index(drop=True)
-    
     pilot = df_clean.iloc[:n_pilot]
     rest = df_clean.iloc[n_pilot:].sample(frac=1, random_state=seed)
     n_val = round(len(rest) * val_share)
-    
+
     manifest = {
         'source_sha256': hashlib.sha256(raw).hexdigest(),
         'split_rule': f'TF-IDF dedup -> first {n_pilot} pilot -> rest {val_share}/{1-val_share} val/test (seed {seed})',
@@ -114,9 +131,9 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
         'real_val': rest["url"].iloc[:n_val].tolist(),
         'real_test': rest["url"].iloc[n_val:].tolist()
     }
-    
-    lengths = df['description_length']
-    brands = Counter(df['brand'])
+
+    lengths = df_clean['description_length']
+    brands = Counter(df_clean['brand'])
     cov = pairs.pivot_table(index="атрибут", columns="статус", values="url", aggfunc="count", fill_value=0)
     for status in ["в тексте", "другое значение", "не упомянут"]:
         if status not in cov:
@@ -125,7 +142,7 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
     cov["всего"] = cov.sum(axis=1)
     cov["доля в тексте"] = (cov["в тексте"] / cov["всего"]).round(2)
     cov["±"] = [round((wilson(row["в тексте"], row["всего"])[1] - wilson(row["в тексте"], row["всего"])[0]) / 2, 2) for _, row in cov.iterrows()]
-    
+
     summary = {
         'input_sha256': manifest['source_sha256'],
         'input_records': len(cards),
@@ -133,10 +150,23 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
         'analyzed_records': len(df),
         'removed_duplicates_tfidf': len(drop_indices),
         'clean_records': len(df_clean),
+        'removed_non_monitors': len(cards) - len(monitors),
+        'duplicate_pairs_tfidf': len(dups),
+        'missing_reference_specs': {
+            attr: int(sum(key not in c['specs'] for _, c in df_clean.iterrows()))
+            for attr, (key, _, _) in ATTRS.items()
+        },
+        'environment': {
+            'python': platform.python_version(),
+            **{name: importlib.metadata.version(name)
+               for name in ('pandas', 'matplotlib', 'scikit-learn')},
+        },
+        'split_parameters': {'n_pilot': n_pilot, 'val_share': val_share,
+                             'seed': seed, 'similarity_threshold': 0.97},
         'description_length_characters': {
-            'min': int(lengths.min()) if not lengths.empty else 0, 
-            'max': int(lengths.max()) if not lengths.empty else 0, 
-            'mean': round(lengths.mean(), 2) if not lengths.empty else 0, 
+            'min': int(lengths.min()) if not lengths.empty else 0,
+            'max': int(lengths.max()) if not lengths.empty else 0,
+            'mean': round(lengths.mean(), 2) if not lengths.empty else 0,
             'median': float(lengths.median()) if not lengths.empty else 0
         },
         'brands': dict(sorted(brands.items())),
@@ -144,7 +174,7 @@ def analyze(path, n_pilot=100, head=None, val_share=0.4, seed=42):
         'coverage': cov.reset_index().to_dict(orient='records'),
         'conflict_card_count': int(pairs.loc[pairs['статус'] == 'другое значение', 'url'].nunique()),
     }
-    
+
     return summary, manifest, pairs, df, df_clean
 
 def plot_coverage(pairs, out_path):
@@ -152,7 +182,7 @@ def plot_coverage(pairs, out_path):
     for s in ["в тексте", "другое значение", "не упомянут"]:
         if s not in cov: cov[s] = 0
     cov = cov[["в тексте", "другое значение", "не упомянут"]]
-    
+
     ax = cov.sort_values("в тексте").plot.barh(stacked=True, figsize=(8, 3.5), color=["#4c9a6a", "#d9a441", "#b8bec7"])
     ax.set_xlabel("число карточек")
     ax.set_ylabel("")
@@ -166,26 +196,40 @@ def plot_coverage(pairs, out_path):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--input', required=True, type=Path)
-    p.add_argument('--out-dir', required=True, type=Path)
-    p.add_argument('--n-pilot', type=int, default=100)
-    p.add_argument('--head', type=int, help='Analyze only the first N monitor cards')
+    p.add_argument('--out-dir', required=True, type=Path,
+                   help='Public aggregate results only')
+    p.add_argument('--private-dir', required=True, type=Path,
+                   help='Local directory for candidate labels and descriptions')
     a = p.parse_args()
-    
+    if a.out_dir.resolve() == a.private_dir.resolve():
+        p.error('--private-dir must differ from --out-dir')
+
+    summary, manifest, pairs, _, df_clean = analyze(a.input)
+
+    gold_dict = {
+        u: {r['атрибут']: (r['эталон'] if pd.notna(r['эталон']) else None)
+            for _, r in group.iterrows()}
+        for u, group in pairs.groupby('url')
+    }
+    # Missing reference fields stay absent, as in the research notebook.
+    cards_gold = [
+        {'url': r['url'], 'title': r['title'], 'description': normalize(r['description']),
+         'gold': gold_dict.get(r['url'], {})}
+        for _, r in df_clean.iterrows()
+    ]
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    summary, manifest, pairs, df, df_clean = analyze(a.input, n_pilot=a.n_pilot, head=a.head)
-    
-    for name, obj in [('eda_summary.json', summary), ('split_manifest.json', manifest), ('split_ids.json', manifest)]:
-        (a.out_dir / name).write_text(json.dumps(obj, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        
-    pairs.drop(columns=["title"]).to_csv(a.out_dir / 'gold_pairs.csv', index=False, encoding="utf-8")
-    gold_dict = {u: {r["атрибут"]: (r["эталон"] if pd.notna(r["эталон"]) else None) for _, r in g.iterrows()} for u, g in pairs.groupby("url")}
-    cards_gold = [{"url": r["url"], "title": r["title"], "description": normalize(r["description"]), "gold": gold_dict.get(r["url"], {})} for _, r in df.iterrows()]
-    
-    gold_path = a.input.parent / f"{a.input.stem}_gold.json"
-    gold_path.write_text(json.dumps(cards_gold, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-    
-    plot_coverage(pairs, a.out_dir / 'coverage.png')
+    a.private_dir.mkdir(parents=True, exist_ok=True)
+    pairs.drop(columns=['title']).to_csv(
+        a.private_dir / 'gold_pairs.csv', index=False, encoding='utf-8')
+    (a.private_dir / f'{a.input.stem}_gold.json').write_text(
+        json.dumps(cards_gold, ensure_ascii=False, indent=1), encoding='utf-8')
+    (a.out_dir / 'eda_summary.json').write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    (a.out_dir / 'split_manifest.json').write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    plot_coverage(pairs, a.out_dir / 'coverage_stacked.png')
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+
 
 if __name__ == '__main__':
     main()
