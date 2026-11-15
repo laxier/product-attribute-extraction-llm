@@ -3,3 +3,5 @@ matplotlib
 jupyter
 openpyxl
 scikit-learn
+anthropic
+python-dotenv
