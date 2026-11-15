@@ -52,7 +52,8 @@ outputs/
 !/01_literature/outputs/prisma.png
 
 # Reviewed public EDA summaries and split identifiers (no source descriptions)
-!/02_eda/results/pilot_summary.json
+!/02_eda/results/preliminary_50_summary.json
+!/02_eda/results/eda_summary.json
 !/02_eda/results/split_manifest.json
 
 # Public experiment configurations, manifests and aggregate tables must be
