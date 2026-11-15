@@ -1,7 +1,10 @@
-# Word documents
+# Local research documents and archives
 *.[dD][oO][cC][xX]
 *.[dD][oO][cC]
 ~$*
+/thesis/
+/pub/
+/archive/
 
 # Python / notebooks
 .venv/
@@ -17,8 +20,9 @@ __pycache__/
 *.pem
 *.key
 
-# Local data, models and generated artifacts
+# Local data, model weights, adapters and generated artifacts
 data/
+datasets/
 models/
 checkpoints/
 adapters/
@@ -28,24 +32,29 @@ outputs/
 *.pt
 *.pth
 *.bin
+*.parquet
+*.csv
+*.xlsx
+*.json
+*.jsonl
+*_gold.json
 
 # Local metadata
 .DS_Store
 .idea/
 .vscode/
 
-# Literature search results
-!01_literature/outputs/
-!01_literature/outputs/**
+# Reviewed public literature artifacts
+!/01_literature/review.xlsx
+!/01_literature/excluded.xlsx
+!/01_literature/outputs/
+!/01_literature/outputs/arxiv_search.csv
+!/01_literature/outputs/prisma.png
 
-# Local EDA scripts
-# Игнорируем файлы данных
-*.csv
-*.xlsx
-*.json
-*.parquet
-data/
-datasets/
+# Reviewed public EDA summaries and split identifiers (no source descriptions)
+!/02_eda/results/pilot_summary.json
+!/02_eda/results/split_manifest.json
 
-results/gold_pairs.csv
-*_gold.json
+# Public experiment configurations, manifests and aggregate tables must be
+# allowed by exact path after review. Do not allow entire results directories:
+# they may also contain source descriptions, gold labels or model responses.
