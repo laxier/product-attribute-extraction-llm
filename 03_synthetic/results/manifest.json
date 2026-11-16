@@ -1,0 +1,34 @@
+{
+  "generator": "03_synthetic/src/generate.py",
+  "format": "jsonl",
+  "record_fields": [
+    "description",
+    "gold",
+    "формат"
+  ],
+  "style_source": "DNS pilot (100 карточек)",
+  "datasets": [
+    {
+      "name": "fewshot",
+      "path": "data/synthetic/fewshot.jsonl",
+      "records": 20,
+      "purpose": "Примеры для few-shot-запросов"
+    },
+    {
+      "name": "train",
+      "path": "data/synthetic/train.jsonl",
+      "records": 1000,
+      "purpose": "Основной набор для обучения QLoRA"
+    },
+    {
+      "name": "train_names",
+      "path": "data/synthetic/train_names.jsonl",
+      "records": 200,
+      "purpose": "Дополнение для обучения: разрешение словом и цифрами",
+      "resolution_name_only_records": 98
+    }
+  ],
+  "training_records": 1200,
+  "fewshot_records": 20,
+  "data_published": false
+}

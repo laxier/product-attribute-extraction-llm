@@ -59,3 +59,6 @@ outputs/
 # Public experiment configurations, manifests and aggregate tables must be
 # allowed by exact path after review. Do not allow entire results directories:
 # they may also contain source descriptions, gold labels or model responses.
+
+# Public synthetic dataset manifest
+!/03_synthetic/results/manifest.json
